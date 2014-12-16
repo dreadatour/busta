@@ -15,11 +15,12 @@ class Bundle(object):
     pre_processors = None
     post_processors = None
 
-    def __init__(self, name, modules, output, config):
+    def __init__(self, name, modules, output, exclude, pre_processors,
+                 post_processors, config):
         self.name = name
         self.modules = modules
         self.output = output
-        # TODO: add 'exclude' param
-        # TODO: add 'pre_processors' param
-        # TODO: add 'post_processors' param
+        self.exclude = exclude
+        self.pre_processors = pre_processors
+        self.post_processors = post_processors
         self.config = config

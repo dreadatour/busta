@@ -52,17 +52,20 @@ def print_bundle_info(bundle):
     print(" Output: {0}".format(bundle.output))
     if bundle.exclude:
         print(" Exclude:")
-        print_modules_list(bundle.exclude)
+        for exclude in bundle.exclude:
+            print("  {0}".format(exclude))
     else:
         print(" Excludes are not defined")
     if bundle.pre_processors:
         print(" Pre-processors:")
-        # TODO: print pre-processors
+        for processor in bundle.pre_processors:
+            print("  {0}".format(processor))
     else:
         print(" Pre-processors are not defined")
     if bundle.post_processors:
         print(" Post-processors:")
-        # TODO: print post-processors
+        for processor in bundle.post_processors:
+            print("  {0}".format(processor))
     else:
         print(" Post-processors are not defined")
 

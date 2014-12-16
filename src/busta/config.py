@@ -106,7 +106,7 @@ class Config(object):
         Validate modules from config.
         """
         if not isinstance(modules, dict):
-            raise ConfigException("Aliases must be 'dict'")
+            raise ConfigException("Modules must be 'dict'")
 
         for name, directory in modules.iteritems():
             if not isinstance(name, basestring):
@@ -116,6 +116,43 @@ class Config(object):
             if not isinstance(directory, basestring):
                 raise ConfigException(
                     "Module directory '{0}' must be 'string'".format(name)
+                )
+
+    @staticmethod
+    def validate_pre_processors(pre_processors):
+        """
+        Validate modules from config.
+        """
+        if not isinstance(pre_processors, dict):
+            raise ConfigException("Pre_processors must be 'dict'")
+
+        for name, command in pre_processors.iteritems():
+            if not isinstance(name, basestring):
+                raise ConfigException(
+                    "Pre_processor name '{0}' must be 'string'".format(name)
+                )
+            if not isinstance(command, basestring):
+                raise ConfigException(
+                    "Pre_processor command '{0}' must be 'string'".format(name)
+                )
+
+    @staticmethod
+    def validate_post_processors(post_processors):
+        """
+        Validate modules from config.
+        """
+        if not isinstance(post_processors, dict):
+            raise ConfigException("Post_processors must be 'dict'")
+
+        for name, command in post_processors.iteritems():
+            if not isinstance(name, basestring):
+                raise ConfigException(
+                    "Post_processor name '{0}' must be 'string'".format(name)
+                )
+            if not isinstance(command, basestring):
+                raise ConfigException((
+                    "Post_processor command '{0}'"
+                    "must be 'string'").format(name)
                 )
 
     @staticmethod
@@ -160,6 +197,12 @@ class Config(object):
                     "Bundle '{0}' 'exclude' param"
                     "must be 'string'").format(name)
                 )
+            for exclude in params['exclude']:
+                if not isinstance(exclude, basestring):
+                    raise ConfigException((
+                        "Bundle '{0}' exclude name '{0}'"
+                        "must be 'string'").format(name, exclude)
+                    )
 
         if 'pre_processors' in params:
             if not isinstance(params['pre_processors'], list):
@@ -167,6 +210,12 @@ class Config(object):
                     "Bundle '{0}' 'pre_processors' param"
                     "must be 'string'").format(name)
                 )
+            for processor in params['pre_processors']:
+                if not isinstance(processor, basestring):
+                    raise ConfigException((
+                        "Bundle '{0}' pre_processor name '{0}'"
+                        "must be 'string'").format(name, processor)
+                    )
 
         if 'post_processors' in params:
             if not isinstance(params['post_processors'], list):
@@ -174,6 +223,12 @@ class Config(object):
                     "Bundle '{0}' 'post_processors' param"
                     "must be 'string'").format(name)
                 )
+            for processor in params['post_processors']:
+                if not isinstance(processor, basestring):
+                    raise ConfigException((
+                        "Bundle '{0}' post_processor name '{0}'"
+                        "must be 'string'").format(name, processor)
+                    )
 
         bundle_params = (
             'modules', 'output', 'exclude', 'pre_processors', 'post_processors'
@@ -247,6 +302,18 @@ class Config(object):
         self.validate_modules(modules)
         self.modules = self.absolute_modules(modules)
 
+        # get and validate pre_processors
+        self.pre_processors = config.get('pre_processors')
+        if 'pre_processors' is None:
+            self.pre_processors = {}
+        Config.validate_pre_processors(self.pre_processors)
+
+        # get and validate post_processors
+        self.post_processors = config.get('post_processors')
+        if 'post_processors' is None:
+            self.post_processors = {}
+        Config.validate_post_processors(self.post_processors)
+
         # get bundles from config, validate them and create Bundle objects
         self.bundles = {}
         for name, params in config['bundles'].iteritems():
@@ -258,17 +325,25 @@ class Config(object):
                 self.root_dir, params['output']
             ))
 
-            # TODO: parse bundle 'exclude' param
-            # TODO: parse bundle 'pre_processors' param
-            # TODO: parse bundle 'post_processors' param
+            exclude = params.get('exclude')
+            if exclude is None:
+                exclude = []
+
+            pre_processors = params.get('pre_processors')
+            if pre_processors is None:
+                pre_processors = []
+
+            post_processors = params.get('pre_processors')
+            if post_processors is None:
+                post_processors = []
 
             # build bundle
             self.bundles[name] = Bundle(
                 name=name,
                 modules=bundle_modules,
                 output=output,
+                exclude=exclude,
+                pre_processors=pre_processors,
+                post_processors=post_processors,
                 config=self
             )
-
-        # TODO: parse 'pre_processors' param
-        # TODO: parse 'post_processors' param
