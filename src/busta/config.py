@@ -5,6 +5,7 @@ import json
 import os
 
 from busta.bundle import Bundle
+from busta.module import Module
 
 
 class ConfigException(Exception):
@@ -18,23 +19,23 @@ class Config(object):
     """
     Config parser and validator.
     """
-    config_file = None
-    root_dir = None
-    modules = None
-    modules_file = None
-    bundles = None
-    pre_processors = None
-    post_processors = None
+    config_file = None  # file with JSON config
+    root_dir = None  # root directory, defined in config
+    modules = None  # modules dictionary
+    bundles = None  # bundles dictionary
+    pre_processors = None  # pre-processors dictionary
+    post_processors = None  # post-processors dictionary
 
     def __init__(self, config_file):
         """
         Initialize config parser.
         """
         self.config_file = os.path.abspath(config_file)
-        try:
-            self.parse_config()
-        except ConfigException as exc:
-            raise ConfigException("{0} in {1}".format(exc, self.config_file))
+        self.modules = {}
+        self.bundles = {}
+        self.pre_processors = {}
+        self.post_processors = {}
+        self.parse_config()
 
     @staticmethod
     def read_json(filename):
@@ -78,8 +79,8 @@ class Config(object):
 
         if 'modules' not in config:
             raise ConfigException("Param 'modules' is not found")
-        if not isinstance(config['modules'], (basestring, dict)):
-            raise ConfigException("Param 'modules' must be 'string' or 'dict'")
+        if not isinstance(config['modules'], dict):
+            raise ConfigException("Param 'modules' must be 'dict'")
 
         if 'bundles' not in config:
             raise ConfigException("Param 'bundles' is not found")
@@ -99,24 +100,6 @@ class Config(object):
         for param in config.keys():
             if param not in config_params:
                 raise ConfigException("Unknown param '{0}'".format(param))
-
-    @staticmethod
-    def validate_modules(modules):
-        """
-        Validate modules from config.
-        """
-        if not isinstance(modules, dict):
-            raise ConfigException("Modules must be 'dict'")
-
-        for name, directory in modules.iteritems():
-            if not isinstance(name, basestring):
-                raise ConfigException(
-                    "Module name '{0}' must be 'string'".format(name)
-                )
-            if not isinstance(directory, basestring):
-                raise ConfigException(
-                    "Module directory '{0}' must be 'string'".format(name)
-                )
 
     @staticmethod
     def validate_pre_processors(pre_processors):
@@ -152,8 +135,22 @@ class Config(object):
             if not isinstance(command, basestring):
                 raise ConfigException((
                     "Post_processor command '{0}'"
-                    "must be 'string'").format(name)
+                    " must be 'string'").format(name)
                 )
+
+    @staticmethod
+    def validate_module(name, path):
+        """
+        Validate module from config.
+        """
+        if not isinstance(name, basestring):
+            raise ConfigException(
+                "Module '{0}' name must be 'string'".format(name)
+            )
+        if not isinstance(path, basestring):
+            raise ConfigException(
+                "Module '{0}' path must be 'string'".format(name)
+            )
 
     @staticmethod
     def validate_bundle(name, params):
@@ -195,39 +192,39 @@ class Config(object):
             if not isinstance(params['exclude'], list):
                 raise ConfigException((
                     "Bundle '{0}' 'exclude' param"
-                    "must be 'string'").format(name)
+                    " must be 'string'").format(name)
                 )
             for exclude in params['exclude']:
                 if not isinstance(exclude, basestring):
                     raise ConfigException((
                         "Bundle '{0}' exclude name '{0}'"
-                        "must be 'string'").format(name, exclude)
+                        " must be 'string'").format(name, exclude)
                     )
 
         if 'pre_processors' in params:
             if not isinstance(params['pre_processors'], list):
                 raise ConfigException((
                     "Bundle '{0}' 'pre_processors' param"
-                    "must be 'string'").format(name)
+                    " must be 'string'").format(name)
                 )
             for processor in params['pre_processors']:
                 if not isinstance(processor, basestring):
                     raise ConfigException((
                         "Bundle '{0}' pre_processor name '{0}'"
-                        "must be 'string'").format(name, processor)
+                        " must be 'string'").format(name, processor)
                     )
 
         if 'post_processors' in params:
             if not isinstance(params['post_processors'], list):
                 raise ConfigException((
                     "Bundle '{0}' 'post_processors' param"
-                    "must be 'string'").format(name)
+                    " must be 'string'").format(name)
                 )
             for processor in params['post_processors']:
                 if not isinstance(processor, basestring):
                     raise ConfigException((
                         "Bundle '{0}' post_processor name '{0}'"
-                        "must be 'string'").format(name, processor)
+                        " must be 'string'").format(name, processor)
                     )
 
         bundle_params = (
@@ -239,36 +236,6 @@ class Config(object):
                     "Unknown param '{0}' in bundle '{1}'".format(param, name)
                 )
 
-    def absolute_modules(self, modules):
-        """
-        Find absolute directories names for all modules.
-        """
-        result = {}
-        for name, dir_name in modules.iteritems():
-            module_dir = os.path.abspath(os.path.join(self.root_dir, dir_name))
-            if os.path.isdir(module_dir):
-                result[name] = module_dir
-            else:
-                raise ConfigException((
-                    "Source dir {0} for module '{1}'"
-                    "is not found").format(module_dir, name)
-                )
-        return result
-
-    def bundle_absolute_modules(self, modules):
-        """
-        Find absolute filename for all sources (use modules).
-        """
-        result = {}
-        for module in modules:
-            if module in self.modules:
-                result[module] = self.modules[module]
-            else:
-                raise ConfigException(
-                    "Module is not defined: {0}".format(module)
-                )
-        return result
-
     def parse_config(self):
         """
         Parse config file and validate it.
@@ -278,7 +245,7 @@ class Config(object):
         # config base validation
         Config.validate_config(config)
 
-        # get root dir from config and check if dir is exist
+        # get and validate root dir
         config_dir = os.path.dirname(self.config_file)
         if 'root' in config:
             self.root_dir = os.path.join(config_dir, config['root'])
@@ -290,60 +257,37 @@ class Config(object):
                 "Root directory '{0}' is not exist".format(self.root_dir)
             )
 
-        # find modules from config
-        if isinstance(config['modules'], basestring):
-            self.modules_file = os.path.join(self.root_dir, config['modules'])
-            modules = Config.read_json(self.modules_file)
-        else:
-            self.modules_file = self.config_file
-            modules = config['modules']
-
-        # validate modules and build abs paths for them
-        self.validate_modules(modules)
-        self.modules = self.absolute_modules(modules)
-
         # get and validate pre_processors
-        self.pre_processors = config.get('pre_processors')
-        if 'pre_processors' is None:
-            self.pre_processors = {}
-        Config.validate_pre_processors(self.pre_processors)
+        if 'pre_processors' in config:
+            self.pre_processors = config['pre_processors']
+            Config.validate_pre_processors(self.pre_processors)
 
         # get and validate post_processors
-        self.post_processors = config.get('post_processors')
-        if 'post_processors' is None:
-            self.post_processors = {}
-        Config.validate_post_processors(self.post_processors)
+        if 'post_processors' in config:
+            self.post_processors = config['post_processors']
+            Config.validate_post_processors(self.post_processors)
 
-        # get bundles from config, validate them and create Bundle objects
-        self.bundles = {}
+        # get and validate modules, create Module objects
+        for name, path in config['modules'].iteritems():
+            Config.validate_module(name, path)
+            self.modules[name] = Module(
+                name=name,
+                path=path,
+                config=self
+            )
+
+        # get and validate bundles, create Bundle objects
         for name, params in config['bundles'].iteritems():
-            # validate bundle
             Config.validate_bundle(name, params)
-
-            bundle_modules = self.bundle_absolute_modules(params['modules'])
-            output = os.path.abspath(os.path.join(
-                self.root_dir, params['output']
-            ))
-
-            exclude = params.get('exclude')
-            if exclude is None:
-                exclude = []
-
-            pre_processors = params.get('pre_processors')
-            if pre_processors is None:
-                pre_processors = []
-
-            post_processors = params.get('pre_processors')
-            if post_processors is None:
-                post_processors = []
-
-            # build bundle
+            output = os.path.abspath(
+                os.path.join(self.root_dir, params['output'])
+            )
             self.bundles[name] = Bundle(
                 name=name,
-                modules=bundle_modules,
+                modules=params['modules'],
                 output=output,
-                exclude=exclude,
-                pre_processors=pre_processors,
-                post_processors=post_processors,
+                exclude=params.get('exclude'),
+                pre_processors=params.get('pre_processors'),
+                post_processors=params.get('post_processors'),
                 config=self
             )

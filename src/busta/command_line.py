@@ -3,7 +3,7 @@ from __future__ import print_function
 import argparse
 import sys
 
-from busta.config import Config, ConfigException
+from busta.config import Config
 
 
 def print_modules_list(modules):
@@ -84,7 +84,7 @@ def main():
 
     try:
         config = Config(options.config)
-    except ConfigException as exc:
+    except Exception as exc:
         print("Error: {0}".format(exc))
         sys.exit(1)
 
