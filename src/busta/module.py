@@ -28,7 +28,13 @@ class Module(object):
     js_dependencies = None  # list of module JavaScript dependencies
     css_files = None  # list of module css files
 
+    _js_files_list = None
+    _css_files_list = None
+
     def __init__(self, name, path, config):
+        self._js_files_list = None
+        self._css_files_list = None
+
         self.name = name
         self.rel_path = path
         self.config = config
@@ -39,6 +45,24 @@ class Module(object):
         )
 
         self.prepare_files()
+
+    @property
+    def human_name(self):
+        """
+        Returns module human name.
+        """
+        if self.is_simple:
+            return self.js_file[len(self.config.root_dir):]
+        else:
+            return '{0}/'.format(self.abs_path[len(self.config.root_dir):])
+
+    @property
+    def js_human_name(self):
+        """
+        Returns module human name.
+        """
+        if self.js_file:
+            return self.js_file[len(self.config.root_dir):]
 
     @staticmethod
     def find_files(directory, pattern):
@@ -76,15 +100,14 @@ class Module(object):
             self.is_simple = True
             return
 
-        raise ModuleException(
-            "Can't find JavaScript file for module '{0}'".format(self.name)
-        )
-
     def find_js_dependencies(self):
         """
         Find JavaScript dependencies.
         """
         self.js_dependencies = []
+
+        if not self.js_file:
+            return
 
         size = os.stat(self.js_file).st_size
         require_re = re.compile(r'\brequire\s*\(\s*([\'"])(.+?)\1\s*\)')
@@ -99,13 +122,14 @@ class Module(object):
         """
         Find module CSS files.
         """
+        self.css_files = []
+
         if self.is_simple:
-            self.css_files = None
             return
 
-        self.css_files = [
+        self.css_files = sorted([
             css_file for css_file in Module.find_files(self.abs_path, '*.css')
-        ]
+        ])
 
     def prepare_files(self):
         """
@@ -114,3 +138,48 @@ class Module(object):
         self.find_js()
         self.find_js_dependencies()
         self.find_css()
+
+    @property
+    def js_files_list(self):
+        """
+        Returns list of module JS files (including dependencies).
+        """
+        if self._js_files_list is None:
+            self._js_files_list = []
+            used_files = []
+
+            if self.js_file and self.js_dependencies:
+                for module in self.js_dependencies:
+                    for js_deps in self.config.modules[module].js_files_list:
+                        if js_deps in used_files:
+                            continue
+                        self._js_files_list.append(js_deps)
+                        used_files.append(js_deps)
+
+            if self.js_file:
+                self._js_files_list.append(self.js_file)
+
+        return self._js_files_list
+
+    @property
+    def css_files_list(self):
+        """
+        Returns list of module CSS files (including dependencies).
+        """
+        if self._css_files_list is None:
+            self._css_files_list = []
+
+            used_files = []
+
+            if self.js_file and self.js_dependencies:
+                for module in self.js_dependencies:
+                    for css_deps in self.config.modules[module].css_files_list:
+                        if css_deps in used_files:
+                            continue
+                        self._css_files_list.append(css_deps)
+                        used_files.append(css_deps)
+
+            if self.css_files:
+                self._css_files_list.extend(self.css_files)
+
+        return self._css_files_list

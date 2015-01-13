@@ -5,6 +5,7 @@ import json
 import os
 
 from busta.bundle import Bundle
+from busta.minify_json import minify_json
 from busta.module import Module
 
 
@@ -21,6 +22,7 @@ class Config(object):
     """
     config_file = None  # file with JSON config
     root_dir = None  # root directory, defined in config
+    output_dir = None  # default output directory
     modules = None  # modules dictionary
     bundles = None  # bundles dictionary
     pre_processors = None  # pre-processors dictionary
@@ -31,6 +33,8 @@ class Config(object):
         Initialize config parser.
         """
         self.config_file = os.path.abspath(config_file)
+        self.root_dir = None
+        self.output_dir = None
         self.modules = {}
         self.bundles = {}
         self.pre_processors = {}
@@ -53,7 +57,7 @@ class Config(object):
         try:
             file_data = open(file_abs)
             try:
-                return json.load(file_data)
+                return json.loads(minify_json(file_data.read()))
             except ValueError as exc:
                 raise ConfigException(
                     "Error while parsing JSON {0}: {1}".format(filename, exc)
@@ -73,9 +77,13 @@ class Config(object):
         if not isinstance(config, dict):
             raise ConfigException("Only 'dict' type allowed for config")
 
-        if 'root' in config:
-            if not isinstance(config['root'], basestring):
-                raise ConfigException("Param 'root' must be 'string'")
+        if 'root_dir' in config:
+            if not isinstance(config['root_dir'], basestring):
+                raise ConfigException("Param 'root_dir' must be 'string'")
+
+        if 'output_dir' in config:
+            if not isinstance(config['output_dir'], basestring):
+                raise ConfigException("Param 'output_dir' must be 'string'")
 
         if 'modules' not in config:
             raise ConfigException("Param 'modules' is not found")
@@ -95,7 +103,8 @@ class Config(object):
                 raise ConfigException("Param 'post_processors' must be 'dict'")
 
         config_params = (
-            'root', 'modules', 'bundles', 'pre_processors', 'post_processors'
+            'root_dir', 'output_dir', 'modules', 'bundles',
+            'pre_processors', 'post_processors'
         )
         for param in config.keys():
             if param not in config_params:
@@ -161,6 +170,10 @@ class Config(object):
             raise ConfigException(
                 "Bundle '{0}' name must be string".format(name)
             )
+        if name != name.lower():
+            raise ConfigException(
+                "Bundle '{0}' name must be lowercase".format(name)
+            )
         if not isinstance(params, dict):
             raise ConfigException(
                 "Bundle '{0}' params must be 'dict'".format(name)
@@ -179,14 +192,12 @@ class Config(object):
                 "Bundle '{0}' 'modules' param is empty".format(name)
             )
 
-        if 'output' not in params:
-            raise ConfigException(
-                "Bundle '{0}' have no 'output' param".format(name)
-            )
-        if not isinstance(params['output'], basestring):
-            raise ConfigException(
-                "Bundle '{0}' 'output' param must be 'string'".format(name)
-            )
+        if 'output_dir' in params:
+            if not isinstance(params['output_dir'], basestring):
+                raise ConfigException((
+                    "Bundle '{0}' 'output_dir' param"
+                    " must be 'string'").format(name)
+                )
 
         if 'exclude' in params:
             if not isinstance(params['exclude'], list):
@@ -228,7 +239,8 @@ class Config(object):
                     )
 
         bundle_params = (
-            'modules', 'output', 'exclude', 'pre_processors', 'post_processors'
+            'modules', 'output_dir', 'exclude', 'pre_processors',
+            'post_processors'
         )
         for param in params.keys():
             if param not in bundle_params:
@@ -247,10 +259,15 @@ class Config(object):
 
         # get and validate root dir
         config_dir = os.path.dirname(self.config_file)
-        if 'root' in config:
-            self.root_dir = os.path.join(config_dir, config['root'])
+        if 'root_dir' in config:
+            self.root_dir = os.path.join(config_dir, config['root_dir'])
         else:
             self.root_dir = config_dir
+
+        if 'output_dir' in config:
+            self.output_dir = os.path.abspath(
+                os.path.join(self.root_dir, config['output_dir'])
+            )
 
         if not os.path.isdir(self.root_dir):
             raise ConfigException(
@@ -279,13 +296,23 @@ class Config(object):
         # get and validate bundles, create Bundle objects
         for name, params in config['bundles'].iteritems():
             Config.validate_bundle(name, params)
-            output = os.path.abspath(
-                os.path.join(self.root_dir, params['output'])
-            )
+            if 'output_dir' in params:
+                output_dir = os.path.abspath(
+                    os.path.join(self.root_dir, params['output_dir'])
+                )
+            elif self.output_dir:
+                output_dir = self.output_dir
+            else:
+                raise ConfigException((
+                    "Bundle '{0}' 'output_dir' param is not defined"
+                    " and global 'output_dir' param"
+                    " in not defined".format(name)
+                ))
+
             self.bundles[name] = Bundle(
                 name=name,
                 modules=params['modules'],
-                output=output,
+                output_dir=output_dir,
                 exclude=params.get('exclude'),
                 pre_processors=params.get('pre_processors'),
                 post_processors=params.get('post_processors'),
