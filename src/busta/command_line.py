@@ -7,27 +7,49 @@ import sys
 from busta.config import Config
 
 
-def print_js_deps(config, module, level=0, used_modules=None):
+DRAW_NONE = u'    '
+DRAW_ONLY = u'─── '
+DRAW_FROM = u'┬── '
+DRAW_SKIP = u'│   '
+DRAW_NEXT = u'├── '
+DRAW_LAST = u'└── '
+
+FONT_UNDERLINE = '\033[4m'
+FONT_BOLD = '\033[1m'
+FONT_OFF = '\033[0m'
+
+
+def print_js_dependencies(module, levels=None, padding=0):
     """
-    Print module JS deps.
+    Print module JS dependencies recursively.
     """
     if not module.js_dependencies:
         return
 
-    if used_modules is None:
-        used_modules = []
+    if levels is None:
+        levels = []
 
-    spaces = '         {0}'.format('    ' * level)
+    spaces = ' ' * padding
+    for level in levels:
+        if level:
+            spaces += DRAW_NONE
+        else:
+            spaces += DRAW_SKIP
+
     last_i = len(module.js_dependencies) - 1
     for i, module_name in enumerate(module.js_dependencies):
-        module_deps = config.modules[module_name]
-        if i == last_i:
-            prefix = u'{0}└── '.format(spaces)
+        is_last = bool(i == last_i)
+        if is_last:
+            prefix = spaces + DRAW_LAST
         else:
-            prefix = u'{0}├── '.format(spaces)
-        print(u'{0}{1}'.format(prefix, module_deps.js_human_name))
-        used_modules.append(module_name)
-        print_js_deps(config, module_deps, level + 1, used_modules)
+            prefix = spaces + DRAW_NEXT
+
+        dependency = module.config.modules[module_name]
+        print(prefix + dependency.js_human_name)
+
+        if dependency.js_dependencies:
+            new_levels = levels + [is_last]
+            print_js_dependencies(dependency, new_levels, padding=padding)
 
 
 def print_modules_list(config, verbosity):
@@ -38,42 +60,48 @@ def print_modules_list(config, verbosity):
         print("No modules defined")
         return
 
-    print("Modules:")
-
     if verbosity >= 3:
         root_len = len(config.root_dir)
+
         for module_name in sorted(config.modules.keys()):
             module = config.modules[module_name]
-            print('\n  "{0}":'.format(module_name))
+            print('\nModule "{0}":'.format(FONT_BOLD + module_name + FONT_OFF))
+
             if module.js_file:
-                print('    JS:  {0}'.format(module.js_human_name))
-
-            if module.is_simple:
-                continue
-
-            print_js_deps(config, module)
+                filename = module.js_human_name
+                print(u'    JS {0}{1}'.format(DRAW_ONLY, filename))
+                print_js_dependencies(module, padding=11)
 
             if module.css_files:
+                count_i = len(module.css_files)
                 for i, css_file in enumerate(module.css_files):
                     if i == 0:
-                        prefix = '    CSS: '
+                        prefix = '   CSS '
+                        if count_i == 1:
+                            prefix += DRAW_ONLY
+                        else:
+                            prefix += DRAW_FROM
                     else:
-                        prefix = '         '
-                    print('{0}{1}'.format(prefix, css_file[root_len:]))
+                        prefix = ' ' * 7
+                        if i == count_i - 1:
+                            prefix += DRAW_LAST
+                        else:
+                            prefix += DRAW_NEXT
+                    print(prefix + css_file[root_len:])
 
     else:
+        print("Modules:")
+
         max_length = 0
         for module_name in config.modules.keys():
             if len(module_name) > max_length:
                 max_length = len(module_name)
+        str_format = u"{{0: >{0}}} {1}{{1}}".format(max_length + 2, DRAW_ONLY)
 
-        str_format = "  {{0: >{0}}} -> {{1}}".format(max_length + 2)
         for module_name in sorted(config.modules.keys()):
             module = config.modules[module_name]
-            module_name = '"{0}"'.format(module_name)
-            print(str_format.format(module_name, module.human_name))
-
-    print()
+            module_name = '"' + module_name + '"'
+            print('  ' + str_format.format(module_name, module.human_name))
 
 
 def print_bundles_list(config, verbosity):
@@ -81,59 +109,169 @@ def print_bundles_list(config, verbosity):
     Print bundles list from config.
     """
     if not config.bundles:
-        print("  No bundles defined")
+        print("No bundles defined")
         return
 
-    print("Bundles:")
-
     root_len = len(config.root_dir)
-    for bundle_name in sorted(config.bundles.keys()):
-        bundle = config.bundles[bundle_name]
+    if verbosity >= 3:
+        for bundle_name in sorted(config.bundles.keys()):
+            bundle = config.bundles[bundle_name]
 
-        if verbosity >= 3:
-            print('\n  "{0}"'.format(bundle_name))
+            print('\nBundle "{0}"'.format(
+                FONT_UNDERLINE + bundle_name + FONT_OFF
+            ))
 
-            print('     Modules:')
-            for module_name in bundle.modules:
-                print(u'     - {0}'.format(module_name))
-
-            print('     Files:')
-
-            if bundle.js_files_list:
-                print('     - {0}:'.format(
-                    bundle.output_file('js')[root_len:])
-                )
-                last_i = len(bundle.js_files_list) - 1
-                for i, js_file in enumerate(bundle.js_files_list):
-                    if i == last_i:
-                        prefix = u'        └── '
-                    else:
-                        prefix = u'        ├── '
-                    print(u'{0}{1}'.format(prefix, js_file[root_len:]))
-
-            if bundle.css_files_list:
-                print('     - {0}:'.format(
-                    bundle.output_file('css')[root_len:])
-                )
-                last_i = len(bundle.css_files_list) - 1
-                for i, css_file in enumerate(bundle.css_files_list):
-                    if i == last_i:
-                        prefix = u'        └── '
-                    else:
-                        prefix = u'        ├── '
-                    print(u'{0}{1}'.format(prefix, css_file[root_len:]))
-
-        else:
-            print('  "{0}" modules:'.format(bundle_name))
-            last_i = len(bundle.modules) - 1
+            count_i = len(bundle.modules)
             for i, module_name in enumerate(bundle.modules):
-                if i == last_i:
-                    prefix = u'   └── '
+                if i == 0:
+                    prefix = '  Modules '
+                    if count_i == 1:
+                        prefix += DRAW_ONLY
+                    else:
+                        prefix += DRAW_FROM
                 else:
-                    prefix = u'   ├── '
-                print(u'{0}"{1}"'.format(prefix, module_name))
+                    prefix = ' ' * 10
+                    if i == count_i - 1:
+                        prefix += DRAW_LAST
+                    else:
+                        prefix += DRAW_NEXT
+                print(prefix + '"' + FONT_BOLD + module_name
+                      + FONT_OFF + '"')
 
-    print()
+            count_i = len(bundle.exclude)
+            for i, exclude_name in enumerate(bundle.exclude):
+                if i == 0:
+                    prefix = '  Exclude '
+                    if count_i == 1:
+                        prefix += DRAW_ONLY
+                    else:
+                        prefix += DRAW_FROM
+                else:
+                    prefix = ' ' * 10
+                    if i == count_i - 1:
+                        prefix += DRAW_LAST
+                    else:
+                        prefix += DRAW_NEXT
+                print(prefix + '"' + FONT_UNDERLINE + exclude_name
+                      + FONT_OFF + '"')
+
+            if bundle.js_files:
+                filename = bundle.output_file('js')[root_len:]
+                prefix = '    Files '
+                if bundle.css_files:
+                    prefix += DRAW_FROM
+                else:
+                    prefix += DRAW_ONLY
+                print(prefix + filename)
+
+                count_i = len(bundle.js_files)
+                for i, js_file in enumerate(bundle.js_files):
+                    if bundle.css_files:
+                        prefix = DRAW_SKIP
+                    else:
+                        prefix = DRAW_NONE
+                    if i == count_i - 1:
+                        prefix += DRAW_LAST
+                    else:
+                        prefix += DRAW_NEXT
+                    print(' ' * 10 + prefix + js_file[root_len:])
+
+            if bundle.css_files:
+                filename = bundle.output_file('css')[root_len:]
+                if bundle.js_files:
+                    prefix = '          '
+                else:
+                    prefix = '    Files '
+                if bundle.js_files:
+                    prefix += DRAW_LAST
+                else:
+                    prefix += DRAW_ONLY
+                print(prefix + filename)
+
+                for i, css_file in enumerate(bundle.css_files):
+                    prefix = DRAW_NONE
+                    if i == len(bundle.css_files) - 1:
+                        prefix += DRAW_LAST
+                    else:
+                        prefix += DRAW_NEXT
+                    print(' ' * 10 + prefix + css_file[root_len:])
+    elif verbosity >= 2:
+        for bundle_name in sorted(config.bundles.keys()):
+            bundle = config.bundles[bundle_name]
+
+            print('\nBundle "{0}"'.format(
+                FONT_UNDERLINE + bundle_name + FONT_OFF
+            ))
+            count_i = len(bundle.modules)
+            for i, module_name in enumerate(bundle.modules):
+                if i == 0:
+                    prefix = '  Modules '
+                    if count_i == 1:
+                        prefix += DRAW_ONLY
+                    else:
+                        prefix += DRAW_FROM
+                else:
+                    prefix = ' ' * 10
+                    if i == count_i - 1:
+                        prefix += DRAW_LAST
+                    else:
+                        prefix += DRAW_NEXT
+                print(prefix + '"' + module_name + '"')
+
+            count_i = len(bundle.exclude)
+            for i, exclude_name in enumerate(bundle.exclude):
+                if i == 0:
+                    prefix = '  Exclude '
+                    if count_i == 1:
+                        prefix += DRAW_ONLY
+                    else:
+                        prefix += DRAW_FROM
+                else:
+                    prefix = ' ' * 10
+                    if i == count_i - 1:
+                        prefix += DRAW_LAST
+                    else:
+                        prefix += DRAW_NEXT
+                print(prefix + '"' + FONT_UNDERLINE + exclude_name
+                      + FONT_OFF + '"')
+
+            if bundle.js_files:
+                filename = bundle.output_file('js')[root_len:]
+                prefix = '    Files '
+                if bundle.css_files:
+                    prefix += DRAW_FROM
+                else:
+                    prefix += DRAW_ONLY
+                print(prefix + filename)
+
+            if bundle.css_files:
+                filename = bundle.output_file('css')[root_len:]
+                if bundle.js_files:
+                    prefix = '          '
+                else:
+                    prefix = '    Files '
+                if bundle.js_files:
+                    prefix += DRAW_LAST
+                else:
+                    prefix += DRAW_ONLY
+                print(prefix + filename)
+    elif verbosity >= 1:
+        bundles_files = []
+        for bundle_name in sorted(config.bundles.keys()):
+            bundle = config.bundles[bundle_name]
+
+            if bundle.js_files:
+                bundles_files.append(bundle.output_file('js'))
+
+            if bundle.css_files:
+                bundles_files.append(bundle.output_file('css'))
+
+        for i, bundle_file in enumerate(bundles_files):
+            if i == 0:
+                prefix = 'Bundles output:   '
+            else:
+                prefix = '                  '
+            print(prefix + bundle_file)
 
 
 def main():
@@ -151,32 +289,24 @@ def main():
         sys.exit(1)
 
     if options.verbosity >= 1:
-        print("Config file: {0}".format(config.config_file))
-        if options.verbosity >= 2:
+        print("Config file:      {0}".format(config.config_file))
+        if options.verbosity >= 3:
             print()
 
     if options.verbosity >= 1:
-        print("Root directory: {0}".format(config.root_dir))
-        if options.verbosity >= 2:
+        print("Root directory:   {0}".format(config.root_dir))
+        if options.verbosity >= 3:
             print()
 
-    if options.verbosity >= 2 and config.pre_processors:
-        print("Pre-processors:")
-        for pre_processor in config.pre_processors.keys():
-            print('  "{0}"'.format(pre_processor))
-        print()
-
-    if options.verbosity >= 2 and config.post_processors:
-        print("Post-processors:")
-        for post_processor in config.post_processors.keys():
-            print('  "{0}"'.format(post_processor))
-        print()
+    if options.verbosity >= 1 and config.output_dir:
+        print("Output directory: {0}".format(config.output_dir))
+        if options.verbosity >= 2:
+            print()
 
     if options.verbosity >= 2:
         print_modules_list(config, options.verbosity)
-
-    if options.verbosity >= 2:
-        print_bundles_list(config, options.verbosity)
+        if options.verbosity >= 3:
+            print()
 
     if options.verbosity >= 1:
-        print("Config is OK")
+        print_bundles_list(config, options.verbosity)

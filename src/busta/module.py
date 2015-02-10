@@ -146,15 +146,11 @@ class Module(object):
         """
         if self._js_files_list is None:
             self._js_files_list = []
-            used_files = []
 
             if self.js_file and self.js_dependencies:
                 for module in self.js_dependencies:
                     for js_deps in self.config.modules[module].js_files_list:
-                        if js_deps in used_files:
-                            continue
                         self._js_files_list.append(js_deps)
-                        used_files.append(js_deps)
 
             if self.js_file:
                 self._js_files_list.append(self.js_file)
@@ -169,15 +165,10 @@ class Module(object):
         if self._css_files_list is None:
             self._css_files_list = []
 
-            used_files = []
-
             if self.js_file and self.js_dependencies:
                 for module in self.js_dependencies:
                     for css_deps in self.config.modules[module].css_files_list:
-                        if css_deps in used_files:
-                            continue
                         self._css_files_list.append(css_deps)
-                        used_files.append(css_deps)
 
             if self.css_files:
                 self._css_files_list.extend(self.css_files)

@@ -5,7 +5,6 @@ import json
 import os
 
 from busta.bundle import Bundle
-from busta.minify_json import minify_json
 from busta.module import Module
 
 
@@ -57,7 +56,7 @@ class Config(object):
         try:
             file_data = open(file_abs)
             try:
-                return json.loads(minify_json(file_data.read()))
+                return json.load(file_data)
             except ValueError as exc:
                 raise ConfigException(
                     "Error while parsing JSON {0}: {1}".format(filename, exc)
@@ -258,16 +257,18 @@ class Config(object):
         Config.validate_config(config)
 
         # get and validate root dir
-        config_dir = os.path.dirname(self.config_file)
+        config_dir = os.path.abspath(os.path.dirname(self.config_file))
         if 'root_dir' in config:
-            self.root_dir = os.path.join(config_dir, config['root_dir'])
+            self.root_dir = os.path.abspath(
+                os.path.join(config_dir, config['root_dir'])
+            ) + os.path.sep
         else:
-            self.root_dir = config_dir
+            self.root_dir = config_dir + os.path.sep
 
         if 'output_dir' in config:
             self.output_dir = os.path.abspath(
                 os.path.join(self.root_dir, config['output_dir'])
-            )
+            ) + os.path.sep
 
         if not os.path.isdir(self.root_dir):
             raise ConfigException(
@@ -301,7 +302,7 @@ class Config(object):
                     os.path.join(self.root_dir, params['output_dir'])
                 )
             elif self.output_dir:
-                output_dir = self.output_dir
+                output_dir = os.path.abspath(self.output_dir)
             else:
                 raise ConfigException((
                     "Bundle '{0}' 'output_dir' param is not defined"
